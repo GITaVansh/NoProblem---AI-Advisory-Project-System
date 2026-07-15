@@ -62,6 +62,8 @@ This repository is configured to be deployed as a single Web Service on **Render
 
 ## 🚀 Deployment (Vercel)
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FGITaVansh%2FNoProblem---AI-Advisory-Project-System)
+
 This repository includes a `vercel.json` config file to support one-click deployment on **Vercel**:
 
 1. **Sign in to Vercel** ([vercel.com](https://vercel.com)) with your GitHub account.
