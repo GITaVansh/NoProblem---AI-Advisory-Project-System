@@ -1,20 +1,13 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "server.cjs",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "dist/**"
-        ]
-      }
-    }
-  ],
-  "routes": [
+      "source": "/api/(.*)",
+      "destination": "/api/server.js"
+    },
     {
-      "src": "/(.*)",
-      "dest": "server.cjs"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
