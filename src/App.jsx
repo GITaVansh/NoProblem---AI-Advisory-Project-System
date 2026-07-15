@@ -109,6 +109,14 @@ const MoonIcon = (props) => (
   </svg>
 );
 
+const MenuIcon = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={props.size || 16} height={props.size || 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <line x1="3" y1="12" x2="21" y2="12" />
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <line x1="3" y1="18" x2="21" y2="18" />
+  </svg>
+);
+
 const API_BASE = window.location.origin.includes('localhost:5173')
   ? 'http://localhost:5000/api'
   : '/api';
@@ -165,6 +173,19 @@ function App() {
       clearInterval(typingInterval);
     };
   }, []);
+  
+  // Get or generate a persistent device user ID
+  const [userId] = useState(() => {
+    let id = localStorage.getItem('no_problem_user_id');
+    if (!id) {
+      id = 'usr_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('no_problem_user_id', id);
+    }
+    return id;
+  });
+
+  // Mobile active view state: 'sidebar', 'chat', 'tools'
+  const [mobileActiveView, setMobileActiveView] = useState('tools');
   
   // Theme state & synchronization
   const [theme, setTheme] = useState(() => {
@@ -247,7 +268,9 @@ function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/projects`);
+      const res = await fetch(`${API_BASE}/projects`, {
+        headers: { 'X-User-ID': userId }
+      });
       const data = await res.json();
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
@@ -260,7 +283,9 @@ function App() {
 
   const fetchProjectDetails = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/projects/${id}`);
+      const res = await fetch(`${API_BASE}/projects/${id}`, {
+        headers: { 'X-User-ID': userId }
+      });
       const data = await res.json();
       setProject(data);
       setScribbleText(data.scribble || '');
@@ -286,12 +311,16 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': userId
+        },
         body: JSON.stringify({ name: newProjName, description: newProjDesc })
       });
       const data = await res.json();
       setProjects([...projects, data]);
       setSelectedProjectId(data.id);
+      setMobileActiveView('tools');
       setIsNewProjectModalOpen(false);
       setNewProjName('');
       setNewProjDesc('');
@@ -303,7 +332,10 @@ function App() {
   const handleDeleteProject = async (id) => {
     if (!window.confirm("Are you sure you want to delete this project?")) return;
     try {
-      await fetch(`${API_BASE}/projects/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/projects/${id}`, { 
+        method: 'DELETE',
+        headers: { 'X-User-ID': userId }
+      });
       const updated = projects.filter(p => p.id !== id);
       setProjects(updated);
       if (selectedProjectId === id) {
@@ -333,7 +365,8 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Gemini-API-Key': localStorage.getItem('gemini_api_key') || ''
+          'X-Gemini-API-Key': localStorage.getItem('gemini_api_key') || '',
+          'X-User-ID': userId
         },
         body: JSON.stringify({ message: msg })
       });
@@ -359,7 +392,8 @@ function App() {
     if (!window.confirm("This will overwrite some of your current tasks/milestones with a template. Continue?")) return;
     try {
       const res = await fetch(`${API_BASE}/projects/${project.id}/initialize-template`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'X-User-ID': userId }
       });
       const data = await res.json();
       setProject(data);
@@ -374,7 +408,10 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/projects/${updatedProject.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': userId
+        },
         body: JSON.stringify(updatedProject)
       });
       const data = await res.json();
@@ -438,7 +475,10 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/projects/${project.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': userId
+        },
         body: JSON.stringify({ scribble: scribbleText })
       });
       const data = await res.json();
@@ -546,7 +586,10 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/projects/${project.id}/xp/optimize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': userId
+        },
         body: JSON.stringify({ code: xpCode })
       });
       const data = await res.json();
@@ -642,8 +685,39 @@ function App() {
         </div>
       )}
       <div className="app-container">
+        {/* Mobile Header Bar */}
+        <div className="mobile-header">
+          <button 
+            onClick={() => setMobileActiveView(mobileActiveView === 'sidebar' ? 'tools' : 'sidebar')} 
+            className="mobile-menu-btn"
+            title="Toggle Menu"
+          >
+            <MenuIcon size={20} />
+          </button>
+          <div className="mobile-logo logo-text">
+            <span className="logo-no">NO</span>
+            <span className="logo-problem">PROBLEM</span>
+          </div>
+          {project && (
+            <div className="mobile-view-toggle">
+              <button 
+                onClick={() => setMobileActiveView('chat')} 
+                className={`mobile-toggle-btn ${mobileActiveView === 'chat' ? 'active' : ''}`}
+              >
+                Chat
+              </button>
+              <button 
+                onClick={() => setMobileActiveView('tools')} 
+                className={`mobile-toggle-btn ${mobileActiveView === 'tools' ? 'active' : ''}`}
+              >
+                Workspace
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* SIDEBAR: Project lists and general parameters */}
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileActiveView === 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
           <div className="sidebar-header">
             <div className="sidebar-title logo-text">
               <span className="logo-no">NO</span>
@@ -657,7 +731,10 @@ function App() {
           {projects.map(p => (
             <button
               key={p.id}
-              onClick={() => setSelectedProjectId(p.id)}
+              onClick={() => {
+                setSelectedProjectId(p.id);
+                setMobileActiveView('tools');
+              }}
               className={`project-item ${selectedProjectId === p.id ? 'active' : ''}`}
             >
               <div className="project-item-name">{p.name}</div>
@@ -706,7 +783,7 @@ function App() {
 
       {/* MAIN CONTAINER: Workspace Dashboard */}
       {project ? (
-        <main className="main-content">
+        <main className={`main-content ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
           <header className="dashboard-header">
             <div>
               <h1 className="project-title">{project.name}</h1>
@@ -743,7 +820,7 @@ function App() {
 
           <div className="workspace-grid">
             {/* AI ADVISOR CHAT PANEL */}
-            <section className="agent-pane">
+            <section className={`agent-pane ${mobileActiveView === 'chat' ? 'mobile-show' : 'mobile-hide'}`}>
               <div className="pane-header">
                 <span>AI Methodology Advisor</span>
                 <MessageIcon size={14} />
@@ -777,7 +854,7 @@ function App() {
             </section>
 
             {/* INTERACTIVE WORKSPACE TABS */}
-            <section className="tools-pane">
+            <section className={`tools-pane ${mobileActiveView === 'tools' ? 'mobile-show' : 'mobile-hide'}`}>
               <nav className="tabs-bar">
                 <button
                   onClick={() => setActiveTab('kanban')}
@@ -1227,7 +1304,7 @@ function App() {
           </div>
         </main>
       ) : (
-        <div className="no-project-selected">
+        <div className={`no-project-selected ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
           <FileTextIcon size={48} />
           <div>Select or create a workspace to begin methodology problem-solving.</div>
           <button onClick={() => setIsNewProjectModalOpen(true)} className="btn">

@@ -83,17 +83,56 @@ function writeDb(data) {
 
 app.get('/api/projects', (req, res) => {
   const db = readDb();
-  res.json(db.projects);
+  const userId = req.headers['x-user-id'] || 'default_user';
+  let userProjects = db.projects.filter(p => p.userId === userId);
+  
+  if (userProjects.length === 0) {
+    const defaultProj = {
+      id: "proj_default_" + userId,
+      userId: userId,
+      name: "Sample Product Launch",
+      description: "A pilot project to test our new features and deploy to production.",
+      recommendedMethodology: "Scrum",
+      methodologyAnalysis: "Based on the need to iterate quickly based on user feedback and deliver increments, Scrum is the ideal methodology.",
+      chatHistory: [
+        { sender: "agent", text: "Hello! I am your Agile Methodology Advisor. Tell me about the problem you are solving, the size of your team, and your requirements. I will help you find the best agile or waterfall methodology and configure your workspace!" }
+      ],
+      kanban: [
+        { id: "k_1", title: "Write User Stories", status: "todo", priority: "high", description: "Draft the requirements as user stories." },
+        { id: "k_2", title: "Configure local server", status: "in_progress", priority: "medium", description: "Setup the express backend and link to database." },
+        { id: "k_3", title: "Project Setup", status: "done", priority: "high", description: "Initialize Vite React project." }
+      ],
+      timeline: [
+        { id: "t_1", title: "Sprint 1 Planning", date: new Date().toISOString().split('T')[0], type: "scrum", completed: true },
+        { id: "t_2", title: "Sprint 1 Review", date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], type: "scrum", completed: false },
+        { id: "t_3", title: "Sprint 2 Planning", date: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], type: "scrum", completed: false }
+      ],
+      checklist: [
+        { id: "c_1", text: "Define product backlog", completed: true },
+        { id: "c_2", text: "Setup git repository", completed: true },
+        { id: "c_3", text: "Integrate scribble pad", completed: false },
+        { id: "c_4", text: "Run automated tests", completed: false }
+      ],
+      scribble: "# Workspace Ideas\n\n- Discuss workflow limits with the team\n- Integrate CI/CD next week",
+      xpOptimizations: []
+    };
+    db.projects.push(defaultProj);
+    writeDb(db);
+    userProjects = [defaultProj];
+  }
+  res.json(userProjects);
 });
 
 app.post('/api/projects', (req, res) => {
   const { name, description } = req.body;
+  const userId = req.headers['x-user-id'] || 'default_user';
   if (!name) {
     return res.status(400).json({ error: "Project name is required" });
   }
   const db = readDb();
   const newProject = {
     id: "proj_" + Math.random().toString(36).substr(2, 9),
+    userId,
     name,
     description: description || "",
     recommendedMethodology: "",
@@ -116,7 +155,8 @@ app.post('/api/projects', (req, res) => {
 
 app.get('/api/projects/:id', (req, res) => {
   const db = readDb();
-  const project = db.projects.find(p => p.id === req.params.id);
+  const userId = req.headers['x-user-id'] || 'default_user';
+  const project = db.projects.find(p => p.id === req.params.id && p.userId === userId);
   if (!project) {
     return res.status(404).json({ error: "Project not found" });
   }
@@ -125,7 +165,8 @@ app.get('/api/projects/:id', (req, res) => {
 
 app.put('/api/projects/:id', (req, res) => {
   const db = readDb();
-  const idx = db.projects.findIndex(p => p.id === req.params.id);
+  const userId = req.headers['x-user-id'] || 'default_user';
+  const idx = db.projects.findIndex(p => p.id === req.params.id && p.userId === userId);
   if (idx === -1) {
     return res.status(404).json({ error: "Project not found" });
   }
@@ -136,19 +177,25 @@ app.put('/api/projects/:id', (req, res) => {
 
 app.delete('/api/projects/:id', (req, res) => {
   const db = readDb();
-  const filtered = db.projects.filter(p => p.id !== req.params.id);
+  const userId = req.headers['x-user-id'] || 'default_user';
+  const idx = db.projects.findIndex(p => p.id === req.params.id && p.userId === userId);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Project not found" });
+  }
+  const filtered = db.projects.filter((p, i) => i !== idx);
   writeDb({ projects: filtered });
   res.json({ success: true });
 });
 
 app.post('/api/projects/:id/chat', async (req, res) => {
   const { message } = req.body;
+  const userId = req.headers['x-user-id'] || 'default_user';
   if (!message) {
     return res.status(400).json({ error: "Message is required" });
   }
 
   const db = readDb();
-  const projectIdx = db.projects.findIndex(p => p.id === req.params.id);
+  const projectIdx = db.projects.findIndex(p => p.id === req.params.id && p.userId === userId);
   if (projectIdx === -1) {
     return res.status(404).json({ error: "Project not found" });
   }
@@ -310,7 +357,8 @@ function getReasoningText(methodology, text) {
 
 app.post('/api/projects/:id/initialize-template', (req, res) => {
   const db = readDb();
-  const idx = db.projects.findIndex(p => p.id === req.params.id);
+  const userId = req.headers['x-user-id'] || 'default_user';
+  const idx = db.projects.findIndex(p => p.id === req.params.id && p.userId === userId);
   if (idx === -1) {
     return res.status(404).json({ error: "Project not found" });
   }
@@ -374,12 +422,13 @@ app.post('/api/projects/:id/initialize-template', (req, res) => {
 
 app.post('/api/projects/:id/xp/optimize', (req, res) => {
   const { code } = req.body;
+  const userId = req.headers['x-user-id'] || 'default_user';
   if (!code) {
     return res.status(400).json({ error: "Code content is required" });
   }
 
   const db = readDb();
-  const projectIdx = db.projects.findIndex(p => p.id === req.params.id);
+  const projectIdx = db.projects.findIndex(p => p.id === req.params.id && p.userId === userId);
   if (projectIdx === -1) {
     return res.status(404).json({ error: "Project not found" });
   }
