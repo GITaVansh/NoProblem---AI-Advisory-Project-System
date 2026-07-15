@@ -59,3 +59,16 @@ This repository is configured to be deployed as a single Web Service on **Render
    - **Build Command**: `npm run build`
    - **Start Command**: `npm start`
 5. Click **Deploy Web Service**. Render will build the static React frontend and host the Express API server concurrently under a single public URL.
+
+## 🚀 Deployment (Vercel)
+
+This repository includes a `vercel.json` config file to support one-click deployment on **Vercel**:
+
+1. **Sign in to Vercel** ([vercel.com](https://vercel.com)) with your GitHub account.
+2. Click **Add New** -> **Project**.
+3. Import your repository `NoProblem---AI-Advisory-Project-System`.
+4. Keep the default settings (Vercel automatically detects the Vite build command and runs the serverless function handler defined in `vercel.json`).
+5. Click **Deploy**.
+
+> [!NOTE]
+> Because Vercel's serverless environment is stateless/read-only, writes to the local `db.json` file will not persist across requests. For persistent workspaces in production, Render (using a persistent disk/volume or third-party database) is highly recommended.
