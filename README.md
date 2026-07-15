@@ -46,3 +46,16 @@ A stark minimalist, high-fidelity Black & White (B&W) project workspace system d
      npm run dev
      ```
    - Open your browser to the local URL (usually `http://localhost:5173`).
+
+## 🚀 Deployment (Render)
+
+This repository is configured to be deployed as a single Web Service on **Render** (or any other Node-compatible cloud provider):
+
+1. **Sign in to Render** ([dashboard.render.com](https://dashboard.render.com)) with your GitHub account.
+2. Click **New** -> **Web Service**.
+3. Connect your repository `NoProblem---AI-Advisory-Project-System`.
+4. Configure the service settings:
+   - **Environment**: `Node`
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm start`
+5. Click **Deploy Web Service**. Render will build the static React frontend and host the Express API server concurrently under a single public URL.
