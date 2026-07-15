@@ -109,7 +109,9 @@ const MoonIcon = (props) => (
   </svg>
 );
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = window.location.origin.includes('localhost:5173')
+  ? 'http://localhost:5000/api'
+  : '/api';
 
 function App() {
   const [projects, setProjects] = useState([]);
