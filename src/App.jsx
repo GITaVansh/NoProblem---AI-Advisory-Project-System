@@ -125,7 +125,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [project, setProject] = useState(null);
-  
+
   // Splash Screen States
   const [showSplash, setShowSplash] = useState(true);
   const [splashFade, setSplashFade] = useState(false);
@@ -137,7 +137,7 @@ function App() {
   useEffect(() => {
     const fullText = "PROBLEM";
     let index = 0;
-    
+
     // Type characters sequentially
     const typingInterval = setInterval(() => {
       if (index < fullText.length) {
@@ -146,19 +146,19 @@ function App() {
         index++;
       } else {
         clearInterval(typingInterval);
-        
+
         // Pause briefly, then draw strikethrough from left to right
         setTimeout(() => {
           setSplashStrike(true);
-          
+
           // Pause briefly, then slide in "NO"
           setTimeout(() => {
             setSplashNo(true);
-            
+
             // Hold full logo state, then trigger page fade out
             setTimeout(() => {
               setSplashFade(true);
-              
+
               // Clean up splash from DOM when fade transition completes
               setTimeout(() => {
                 setShowSplash(false);
@@ -173,7 +173,7 @@ function App() {
       clearInterval(typingInterval);
     };
   }, []);
-  
+
   // Get or generate a persistent device user ID
   const [userId] = useState(() => {
     let id = localStorage.getItem('no_problem_user_id');
@@ -186,7 +186,7 @@ function App() {
 
   // Mobile active view state: 'sidebar', 'chat', 'tools'
   const [mobileActiveView, setMobileActiveView] = useState('tools');
-  
+
   // Theme state & synchronization
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -202,55 +202,64 @@ function App() {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
-  
+
   // AI Settings configuration states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || '');
-  
+
+  // Team Collaboration States
+  const [teamCode, setTeamCode] = useState(() => localStorage.getItem('no_problem_team_code') || '');
+  const [teamName, setTeamName] = useState(() => localStorage.getItem('no_problem_team_name') || '');
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [teamModalTab, setTeamModalTab] = useState('join');
+  const [joinTeamCodeInput, setJoinTeamCodeInput] = useState('');
+  const [createTeamNameInput, setCreateTeamNameInput] = useState('');
+  const [newlyCreatedTeam, setNewlyCreatedTeam] = useState(null);
+
   // UI states
   const [activeTab, setActiveTab] = useState('kanban');
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  
+
   // Modals
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
-  
+
   // Kanban items add
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
   const [cardTargetCol, setCardTargetCol] = useState('todo');
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardDesc, setNewCardDesc] = useState('');
   const [newCardPriority, setNewCardPriority] = useState('medium');
-  
+
   // Timeline items add
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDate, setNewEventDate] = useState('');
-  
+
   // Checklist items add
   const [newChecklistItem, setNewChecklistItem] = useState('');
-  
+
   // XP Optimizer items
   const [xpCode, setXpCode] = useState('// Enter your code here to optimize under XP rules...\n\nfunction processData(varName) {\n  var temp = varName;\n  for(var i=0; i<10; i++) {\n    temp += i;\n  }\n  return temp;\n}');
   const [isXpLoading, setIsXpLoading] = useState(false);
   const [activeXpOpt, setActiveXpOpt] = useState(null);
-  
+
   // Calendar Navigation
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
-  
+
   // Scribble pad saving indicators
   const [scribbleText, setScribbleText] = useState('');
   const [isScribbleSaving, setIsScribbleSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  
+
   const chatEndRef = useRef(null);
 
-  // Fetch projects list
+  // Fetch projects list when component mounts or team workspace changes
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [teamCode]);
 
   // Fetch full project details when selected project changes
   useEffect(() => {
@@ -266,15 +275,35 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [project?.chatHistory]);
 
+  // Polling for real-time collaborative updates when in a team workspace
+  useEffect(() => {
+    if (!teamCode) return;
+
+    const interval = setInterval(() => {
+      fetchProjects();
+      if (selectedProjectId) {
+        fetchProjectDetails(selectedProjectId);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [teamCode, selectedProjectId]);
+
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/projects`, {
-        headers: { 'X-User-ID': userId }
-      });
+      const headers = { 'X-User-ID': userId };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
+      const res = await fetch(`${API_BASE}/projects`, { headers });
       const data = await res.json();
       setProjects(data);
-      if (data.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(data[0].id);
+      if (data.length > 0) {
+        if (!selectedProjectId || !data.some(p => p.id === selectedProjectId)) {
+          setSelectedProjectId(data[0].id);
+        }
+      } else {
+        setSelectedProjectId('');
       }
     } catch (err) {
       console.error("Error fetching projects", err);
@@ -283,14 +312,17 @@ function App() {
 
   const fetchProjectDetails = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/projects/${id}`, {
-        headers: { 'X-User-ID': userId }
-      });
+      const headers = { 'X-User-ID': userId };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
+      const res = await fetch(`${API_BASE}/projects/${id}`, { headers });
       const data = await res.json();
       setProject(data);
-      setScribbleText(data.scribble || '');
-      // Automatically choose tab based on recommended methodology
-      if (data.recommendedMethodology) {
+      if (document.activeElement?.className !== 'scribble-textarea') {
+        setScribbleText(data.scribble || '');
+      }
+      if (data.recommendedMethodology && !selectedProjectId) {
         const meth = data.recommendedMethodology.toLowerCase();
         if (meth.includes('kanban')) {
           setActiveTab('kanban');
@@ -309,12 +341,16 @@ function App() {
     e.preventDefault();
     if (!newProjName.trim()) return;
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-User-ID': userId
+      };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-ID': userId
-        },
+        headers,
         body: JSON.stringify({ name: newProjName, description: newProjDesc })
       });
       const data = await res.json();
@@ -332,9 +368,13 @@ function App() {
   const handleDeleteProject = async (id) => {
     if (!window.confirm("Are you sure you want to delete this project?")) return;
     try {
-      await fetch(`${API_BASE}/projects/${id}`, { 
+      const headers = { 'X-User-ID': userId };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
+      await fetch(`${API_BASE}/projects/${id}`, {
         method: 'DELETE',
-        headers: { 'X-User-ID': userId }
+        headers
       });
       const updated = projects.filter(p => p.id !== id);
       setProjects(updated);
@@ -346,7 +386,6 @@ function App() {
     }
   };
 
-  // Chat agent submission
   const handleSendChatMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !project) return;
@@ -361,13 +400,17 @@ function App() {
     }));
 
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Gemini-API-Key': localStorage.getItem('gemini_api_key') || '',
+        'X-User-ID': userId
+      };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects/${project.id}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Gemini-API-Key': localStorage.getItem('gemini_api_key') || '',
-          'X-User-ID': userId
-        },
+        headers,
         body: JSON.stringify({ message: msg })
       });
       const data = await res.json();
@@ -377,7 +420,6 @@ function App() {
         recommendedMethodology: data.recommendedMethodology,
         methodologyAnalysis: data.methodologyAnalysis
       }));
-      // Refresh sidebar list to reflect recommended methodology badge
       fetchProjects();
     } catch (err) {
       console.error("Error sending message to chat agent", err);
@@ -386,14 +428,17 @@ function App() {
     }
   };
 
-  // Initialize Methodology templates
   const handleInitializeTemplate = async () => {
     if (!project) return;
     if (!window.confirm("This will overwrite some of your current tasks/milestones with a template. Continue?")) return;
     try {
+      const headers = { 'X-User-ID': userId };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects/${project.id}/initialize-template`, {
         method: 'POST',
-        headers: { 'X-User-ID': userId }
+        headers
       });
       const data = await res.json();
       setProject(data);
@@ -403,15 +448,18 @@ function App() {
     }
   };
 
-  // General PUT update to save local edits
   const saveProjectState = async (updatedProject) => {
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-User-ID': userId
+      };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects/${updatedProject.id}`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-ID': userId
-        },
+        headers,
         body: JSON.stringify(updatedProject)
       });
       const data = await res.json();
@@ -419,6 +467,77 @@ function App() {
     } catch (err) {
       console.error("Error updating project data", err);
     }
+  };
+
+  // Team actions
+  const handleJoinTeam = async (e) => {
+    if (e) e.preventDefault();
+    if (!joinTeamCodeInput.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/teams/${joinTeamCodeInput.trim()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || "Failed to find team code");
+        return;
+      }
+      const team = await res.json();
+      setTeamCode(team.code);
+      setTeamName(team.name);
+      localStorage.setItem('no_problem_team_code', team.code);
+      localStorage.setItem('no_problem_team_name', team.name);
+      setIsTeamModalOpen(false);
+      setJoinTeamCodeInput('');
+      setSelectedProjectId('');
+      alert(`Successfully joined team: ${team.name}!`);
+    } catch (err) {
+      console.error("Error joining team", err);
+      alert("Error joining team. Please check the code.");
+    }
+  };
+
+  const handleCreateTeam = async (e) => {
+    if (e) e.preventDefault();
+    if (!createTeamNameInput.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/teams`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-ID': userId
+        },
+        body: JSON.stringify({ name: createTeamNameInput.trim() })
+      });
+      if (!res.ok) {
+        alert("Failed to create team");
+        return;
+      }
+      const team = await res.json();
+      setNewlyCreatedTeam(team);
+      setTeamCode(team.code);
+      setTeamName(team.name);
+      localStorage.setItem('no_problem_team_code', team.code);
+      localStorage.setItem('no_problem_team_name', team.name);
+      setCreateTeamNameInput('');
+      setSelectedProjectId('');
+    } catch (err) {
+      console.error("Error creating team", err);
+      alert("Error creating team");
+    }
+  };
+
+  const handleLeaveTeam = () => {
+    if (!window.confirm("Are you sure you want to leave this team workspace? You will return to your personal projects.")) return;
+    setTeamCode('');
+    setTeamName('');
+    localStorage.removeItem('no_problem_team_code');
+    localStorage.removeItem('no_problem_team_name');
+    setSelectedProjectId('');
+  };
+
+  const copyTeamCode = () => {
+    if (!teamCode) return;
+    navigator.clipboard.writeText(teamCode);
+    alert("Team code copied to clipboard!");
   };
 
   // Kanban interactions
@@ -436,10 +555,10 @@ function App() {
 
     const updatedKanban = [...(project.kanban || []), newCard];
     const updatedProj = { ...project, kanban: updatedKanban };
-    
+
     setProject(updatedProj);
     saveProjectState(updatedProj);
-    
+
     setIsAddCardOpen(false);
     setNewCardTitle('');
     setNewCardDesc('');
@@ -473,12 +592,16 @@ function App() {
     setIsScribbleSaving(true);
     setSaveSuccess(false);
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-User-ID': userId
+      };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects/${project.id}`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-ID': userId
-        },
+        headers,
         body: JSON.stringify({ scribble: scribbleText })
       });
       const data = await res.json();
@@ -584,12 +707,16 @@ function App() {
     if (!project || !xpCode.trim()) return;
     setIsXpLoading(true);
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-User-ID': userId
+      };
+      if (teamCode) {
+        headers['X-Team-Code'] = teamCode;
+      }
       const res = await fetch(`${API_BASE}/projects/${project.id}/xp/optimize`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-ID': userId
-        },
+        headers,
         body: JSON.stringify({ code: xpCode })
       });
       const data = await res.json();
@@ -607,13 +734,13 @@ function App() {
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed
-    
+
     // First day of current month
     const firstDay = new Date(year, month, 1);
     const startDayOfWeek = firstDay.getDay(); // 0: Sun, 1: Mon, ...
-    
+
     const days = [];
-    
+
     // Previous month trailing days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
@@ -628,7 +755,7 @@ function App() {
         dateString: `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(dayVal).padStart(2, '0')}`
       });
     }
-    
+
     // Current month days
     const lastDay = new Date(year, month + 1, 0).getDate();
     for (let i = 1; i <= lastDay; i++) {
@@ -640,7 +767,7 @@ function App() {
         dateString: `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`
       });
     }
-    
+
     // Next month leading days to reach 42 cells (6 rows * 7 columns)
     const remaining = 42 - days.length;
     for (let i = 1; i <= remaining; i++) {
@@ -654,7 +781,7 @@ function App() {
         dateString: `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`
       });
     }
-    
+
     return days;
   };
 
@@ -687,8 +814,8 @@ function App() {
       <div className="app-container">
         {/* Mobile Header Bar */}
         <div className="mobile-header">
-          <button 
-            onClick={() => setMobileActiveView(mobileActiveView === 'sidebar' ? 'tools' : 'sidebar')} 
+          <button
+            onClick={() => setMobileActiveView(mobileActiveView === 'sidebar' ? 'tools' : 'sidebar')}
             className="mobile-menu-btn"
             title="Toggle Menu"
           >
@@ -700,14 +827,14 @@ function App() {
           </div>
           {project && (
             <div className="mobile-view-toggle">
-              <button 
-                onClick={() => setMobileActiveView('chat')} 
+              <button
+                onClick={() => setMobileActiveView('chat')}
                 className={`mobile-toggle-btn ${mobileActiveView === 'chat' ? 'active' : ''}`}
               >
                 Chat
               </button>
-              <button 
-                onClick={() => setMobileActiveView('tools')} 
+              <button
+                onClick={() => setMobileActiveView('tools')}
                 className={`mobile-toggle-btn ${mobileActiveView === 'tools' ? 'active' : ''}`}
               >
                 Workspace
@@ -723,792 +850,945 @@ function App() {
               <span className="logo-no">NO</span>
               <span className="logo-problem">PROBLEM</span>
             </div>
-            <div className="sidebar-subtitle">AI Advisory & Project System</div>
+            <div className="sidebar-subtitle">Workflow Management System</div>
           </div>
-        
-        <div className="project-list-container">
-          <div className="section-label">Active Workspaces</div>
-          {projects.map(p => (
-            <button
-              key={p.id}
-              onClick={() => {
-                setSelectedProjectId(p.id);
-                setMobileActiveView('tools');
-              }}
-              className={`project-item ${selectedProjectId === p.id ? 'active' : ''}`}
-            >
-              <div className="project-item-name">{p.name}</div>
-              <div className="project-item-desc">{p.description || "No description"}</div>
-              {p.recommendedMethodology && (
-                <span className="project-item-meth">{p.recommendedMethodology}</span>
-              )}
-            </button>
-          ))}
-          {projects.length === 0 && (
-            <div style={{ padding: '8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-              No projects configured. Create one below.
+
+          {teamCode && (
+            <div style={{ padding: '12px 12px 0 12px' }}>
+              <div className="team-indicator-bar">
+                <div className="team-info-badge">
+                  <span className="team-badge-label">Team Workspace</span>
+                  <span className="team-badge-value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                    {teamName}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                    <span 
+                      className="team-code-badge" 
+                      title="Click to copy team code" 
+                      onClick={copyTeamCode} 
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {teamCode}
+                    </span>
+                  </div>
+                </div>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleLeaveTeam} 
+                  title="Leave Team" 
+                  style={{ padding: '3px 6px', fontSize: '9px', textTransform: 'uppercase' }}
+                >
+                  Leave
+                </button>
+              </div>
             </div>
           )}
-        </div>
 
-        <div className="sidebar-footer">
-          <button onClick={toggleTheme} className="btn btn-secondary w-full" style={{ marginBottom: '4px' }}>
-            {theme === 'dark' ? (
-              <>
-                <SunIcon size={12} style={{ marginRight: '6px' }} /> Light Mode
-              </>
-            ) : (
-              <>
-                <MoonIcon size={12} style={{ marginRight: '6px' }} /> Dark Mode
-              </>
+          <div className="project-list-container">
+            <div className="section-label">{teamCode ? `${teamName} Projects` : 'Personal Projects'}</div>
+            {projects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setSelectedProjectId(p.id);
+                  setMobileActiveView('tools');
+                }}
+                className={`project-item ${selectedProjectId === p.id ? 'active' : ''}`}
+              >
+                <div className="project-item-name">{p.name}</div>
+                <div className="project-item-desc">{p.description || "No description"}</div>
+                {p.recommendedMethodology && (
+                  <span className="project-item-meth">{p.recommendedMethodology}</span>
+                )}
+              </button>
+            ))}
+            {projects.length === 0 && (
+              <div style={{ padding: '8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                No projects configured. Create one below.
+              </div>
             )}
-          </button>
-          <button onClick={() => setIsSettingsOpen(true)} className="btn btn-secondary w-full" style={{ marginBottom: '4px' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            AI Settings
-          </button>
-          <button onClick={() => setIsNewProjectModalOpen(true)} className="btn w-full" style={{ marginBottom: '4px' }}>
-            <PlusIcon size={14} style={{ marginRight: '4px' }} /> New Project
-          </button>
-          {project && (
-            <button 
-              onClick={() => handleDeleteProject(project.id)} 
-              className="btn btn-danger w-full"
-            >
-              <TrashIcon size={14} style={{ marginRight: '4px' }} /> Delete Project
-            </button>
-          )}
-        </div>
-      </aside>
+          </div>
 
-      {/* MAIN CONTAINER: Workspace Dashboard */}
-      {project ? (
-        <main className={`main-content ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
-          <header className="dashboard-header">
-            <div>
-              <h1 className="project-title">{project.name}</h1>
-              <p className="project-desc">{project.description || "No project description provided."}</p>
-              {project.recommendedMethodology ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div className="methodology-badge">
-                    Active: {project.recommendedMethodology}
-                  </div>
-                  <button 
-                    onClick={handleInitializeTemplate} 
-                    className="btn btn-secondary" 
-                    style={{ padding: '2px 8px', fontSize: '10px', marginTop: '8px' }}
-                  >
-                    Reset/Load Template
-                  </button>
-                </div>
+          <div className="sidebar-footer">
+            <button onClick={toggleTheme} className="btn btn-secondary w-full" style={{ marginBottom: '4px' }}>
+              {theme === 'dark' ? (
+                <>
+                  <SunIcon size={12} style={{ marginRight: '6px' }} /> Light Mode
+                </>
               ) : (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
-                  Use the AI Advisor on the left pane to analyze your problem & assign a methodology.
+                <>
+                  <MoonIcon size={12} style={{ marginRight: '6px' }} /> Dark Mode
+                </>
+              )}
+            </button>
+            <button onClick={() => setIsSettingsOpen(true)} className="btn btn-secondary w-full" style={{ marginBottom: '4px' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+              AI Settings
+            </button>
+            <button 
+              onClick={() => {
+                setNewlyCreatedTeam(null);
+                setIsTeamModalOpen(true);
+              }} 
+              className="btn btn-secondary w-full" 
+              style={{ marginBottom: '4px' }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              {teamCode ? "Team Settings" : "Join/Create Team"}
+            </button>
+            <button onClick={() => setIsNewProjectModalOpen(true)} className="btn w-full" style={{ marginBottom: '4px' }}>
+              <PlusIcon size={14} style={{ marginRight: '4px' }} /> New Project
+            </button>
+            {project && (
+              <button
+                onClick={() => handleDeleteProject(project.id)}
+                className="btn btn-danger w-full"
+              >
+                <TrashIcon size={14} style={{ marginRight: '4px' }} /> Delete Project
+              </button>
+            )}
+          </div>
+        </aside>
+
+        {/* MAIN CONTAINER: Workspace Dashboard */}
+        {project ? (
+          <main className={`main-content ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
+            <header className="dashboard-header">
+              <div>
+                <h1 className="project-title">{project.name}</h1>
+                <p className="project-desc">{project.description || "No project description provided."}</p>
+                {project.recommendedMethodology ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="methodology-badge">
+                      Active: {project.recommendedMethodology}
+                    </div>
+                    <button
+                      onClick={handleInitializeTemplate}
+                      className="btn btn-secondary"
+                      style={{ padding: '2px 8px', fontSize: '10px', marginTop: '8px' }}
+                    >
+                      Reset/Load Template
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
+                    Use the AI Advisor on the left pane to analyze your problem & assign a methodology.
+                  </div>
+                )}
+              </div>
+
+              {project.methodologyAnalysis && (
+                <div style={{ border: '1px solid var(--border-color)', padding: '10px', backgroundColor: 'var(--bg-primary)', maxWidth: '300px' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }}>Methodology Scores</div>
+                  <div style={{ fontSize: '11px', whiteSpace: 'pre-line', marginTop: '4px', lineHeight: '1.4' }}>
+                    {project.methodologyAnalysis}
+                  </div>
                 </div>
               )}
-            </div>
-            
-            {project.methodologyAnalysis && (
-              <div style={{ border: '1px solid var(--border-color)', padding: '10px', backgroundColor: 'var(--bg-primary)', maxWidth: '300px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }}>Methodology Scores</div>
-                <div style={{ fontSize: '11px', whiteSpace: 'pre-line', marginTop: '4px', lineHeight: '1.4' }}>
-                  {project.methodologyAnalysis}
+            </header>
+
+            <div className="workspace-grid">
+              {/* AI ADVISOR CHAT PANEL */}
+              <section className={`agent-pane ${mobileActiveView === 'chat' ? 'mobile-show' : 'mobile-hide'}`}>
+                <div className="pane-header">
+                  <span>AI Methodology Advisor</span>
+                  <MessageIcon size={14} />
                 </div>
-              </div>
-            )}
-          </header>
-
-          <div className="workspace-grid">
-            {/* AI ADVISOR CHAT PANEL */}
-            <section className={`agent-pane ${mobileActiveView === 'chat' ? 'mobile-show' : 'mobile-hide'}`}>
-              <div className="pane-header">
-                <span>AI Methodology Advisor</span>
-                <MessageIcon size={14} />
-              </div>
-              <div className="chat-history">
-                {project.chatHistory?.map((msg, idx) => (
-                  <div key={idx} className={`chat-message ${msg.sender}`}>
-                    {msg.text}
-                  </div>
-                ))}
-                {isChatLoading && (
-                  <div className="chat-message agent" style={{ fontStyle: 'italic', fontFamily: 'var(--font-mono)' }}>
-                    Analyzing inputs...
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-              <form onSubmit={handleSendChatMessage} className="chat-input-area">
-                <input
-                  type="text"
-                  placeholder="Explain problem or project attributes..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  className="input-field"
-                  disabled={isChatLoading}
-                />
-                <button type="submit" className="btn" disabled={isChatLoading}>
-                  Send
-                </button>
-              </form>
-            </section>
-
-            {/* INTERACTIVE WORKSPACE TABS */}
-            <section className={`tools-pane ${mobileActiveView === 'tools' ? 'mobile-show' : 'mobile-hide'}`}>
-              <nav className="tabs-bar">
-                <button
-                  onClick={() => setActiveTab('kanban')}
-                  className={`tab-btn ${activeTab === 'kanban' ? 'active' : ''}`}
-                >
-                  <KanbanIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Kanban & Scribble
-                </button>
-                <button
-                  onClick={() => setActiveTab('timeline')}
-                  className={`tab-btn ${activeTab === 'timeline' ? 'active' : ''}`}
-                >
-                  <CalendarIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Timeline & Calendar
-                </button>
-                <button
-                  onClick={() => setActiveTab('checklist')}
-                  className={`tab-btn ${activeTab === 'checklist' ? 'active' : ''}`}
-                >
-                  <CheckSquareIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Checklist Tab
-                </button>
-                <button
-                  onClick={() => setActiveTab('xp')}
-                  className={`tab-btn ${activeTab === 'xp' ? 'active' : ''}`}
-                >
-                  <CodeIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> XP Code Optimizer
-                </button>
-              </nav>
-
-              <div className="tab-content">
-                
-                {/* TAB 1: KANBAN & SCRIBBLE PAD (ALIGNED SIDE-BY-SIDE) */}
-                {activeTab === 'kanban' && (
-                  <div className="kanban-scribble-layout">
-                    {/* KANBAN SECTION */}
-                    <div className="kanban-section">
-                      <div className="kanban-board">
-                        
-                        {/* column: TODO */}
-                        <div className="kanban-column">
-                          <div className="column-header">
-                            <span>To Do</span>
-                            <span className="column-count">
-                              {project.kanban?.filter(c => c.status === 'todo').length || 0}
-                            </span>
-                          </div>
-                          <div className="cards-container">
-                            {project.kanban?.filter(c => c.status === 'todo').map(card => (
-                              <div key={card.id} className="kanban-card">
-                                <div className="card-title">{card.title}</div>
-                                {card.description && <div className="card-desc">{card.description}</div>}
-                                <div className="card-footer">
-                                  <span className={`card-priority ${card.priority}`}>{card.priority}</span>
-                                  <div className="card-actions">
-                                    <button 
-                                      onClick={() => handleMoveKanbanCard(card.id, 'in_progress')} 
-                                      className="card-action-btn"
-                                      title="Move to In Progress"
-                                    >
-                                      <ChevronRightIcon size={14} />
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDeleteKanbanCard(card.id)} 
-                                      className="card-action-btn"
-                                      title="Delete Card"
-                                    >
-                                      <TrashIcon size={12} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            <button 
-                              onClick={() => { setCardTargetCol('todo'); setIsAddCardOpen(true); }} 
-                              className="btn btn-secondary" 
-                              style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
-                            >
-                              <PlusIcon size={12} /> Add Card
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* column: IN PROGRESS */}
-                        <div className="kanban-column">
-                          <div className="column-header">
-                            <span>In Progress</span>
-                            <span className="column-count">
-                              {project.kanban?.filter(c => c.status === 'in_progress').length || 0}
-                            </span>
-                          </div>
-                          <div className="cards-container">
-                            {project.kanban?.filter(c => c.status === 'in_progress').map(card => (
-                              <div key={card.id} className="kanban-card">
-                                <div className="card-title">{card.title}</div>
-                                {card.description && <div className="card-desc">{card.description}</div>}
-                                <div className="card-footer">
-                                  <span className={`card-priority ${card.priority}`}>{card.priority}</span>
-                                  <div className="card-actions">
-                                    <button 
-                                      onClick={() => handleMoveKanbanCard(card.id, 'todo')} 
-                                      className="card-action-btn"
-                                      title="Move to To Do"
-                                    >
-                                      <ChevronLeftIcon size={14} />
-                                    </button>
-                                    <button 
-                                      onClick={() => handleMoveKanbanCard(card.id, 'done')} 
-                                      className="card-action-btn"
-                                      title="Move to Done"
-                                    >
-                                      <ChevronRightIcon size={14} />
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDeleteKanbanCard(card.id)} 
-                                      className="card-action-btn"
-                                      title="Delete Card"
-                                    >
-                                      <TrashIcon size={12} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            <button 
-                              onClick={() => { setCardTargetCol('in_progress'); setIsAddCardOpen(true); }} 
-                              className="btn btn-secondary" 
-                              style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
-                            >
-                              <PlusIcon size={12} /> Add Card
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* column: DONE */}
-                        <div className="kanban-column">
-                          <div className="column-header">
-                            <span>Done</span>
-                            <span className="column-count">
-                              {project.kanban?.filter(c => c.status === 'done').length || 0}
-                            </span>
-                          </div>
-                          <div className="cards-container">
-                            {project.kanban?.filter(c => c.status === 'done').map(card => (
-                              <div key={card.id} className="kanban-card">
-                                <div className="card-title" style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>
-                                  {card.title}
-                                </div>
-                                {card.description && <div className="card-desc" style={{ color: 'var(--text-muted)' }}>{card.description}</div>}
-                                <div className="card-footer">
-                                  <span className={`card-priority ${card.priority}`} style={{ opacity: 0.5 }}>{card.priority}</span>
-                                  <div className="card-actions">
-                                    <button 
-                                      onClick={() => handleMoveKanbanCard(card.id, 'in_progress')} 
-                                      className="card-action-btn"
-                                      title="Move to In Progress"
-                                    >
-                                      <ChevronLeftIcon size={14} />
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDeleteKanbanCard(card.id)} 
-                                      className="card-action-btn"
-                                      title="Delete Card"
-                                    >
-                                      <TrashIcon size={12} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            <button 
-                              onClick={() => { setCardTargetCol('done'); setIsAddCardOpen(true); }} 
-                              className="btn btn-secondary" 
-                              style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
-                            >
-                              <PlusIcon size={12} /> Add Card
-                            </button>
-                          </div>
-                        </div>
-
-                      </div>
+                <div className="chat-history">
+                  {project.chatHistory?.map((msg, idx) => (
+                    <div key={idx} className={`chat-message ${msg.sender}`}>
+                      {msg.text}
                     </div>
-
-                    {/* ALIGNED SCRIBBLE PAD */}
-                    <div className="scribble-section">
-                      <div className="scribble-header">
-                        <span>Scribble Pad</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {saveSuccess && <span style={{ fontSize: '9px', textTransform: 'lowercase', color: 'var(--text-muted)' }}>Saved!</span>}
-                          <button 
-                            onClick={handleSaveScribble} 
-                            disabled={isScribbleSaving} 
-                            className="btn btn-secondary"
-                            style={{ padding: '2px 6px', fontSize: '9px' }}
-                          >
-                            <SaveIcon size={10} style={{ marginRight: '3px' }} /> {isScribbleSaving ? 'Saving' : 'Save'}
-                          </button>
-                        </div>
-                      </div>
-                      <textarea
-                        value={scribbleText}
-                        onChange={(e) => setScribbleText(e.target.value)}
-                        placeholder="# Scribble Board&#10;&#10;- Meeting at 10 AM&#10;- Discuss Kanban WIP limits&#10;- Refactor total price calculation"
-                        className="scribble-textarea"
-                      />
+                  ))}
+                  {isChatLoading && (
+                    <div className="chat-message agent" style={{ fontStyle: 'italic', fontFamily: 'var(--font-mono)' }}>
+                      Analyzing inputs...
                     </div>
-                  </div>
-                )}
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <form onSubmit={handleSendChatMessage} className="chat-input-area">
+                  <input
+                    type="text"
+                    placeholder="Explain problem or project attributes..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    className="input-field"
+                    disabled={isChatLoading}
+                  />
+                  <button type="submit" className="btn" disabled={isChatLoading}>
+                    Send
+                  </button>
+                </form>
+              </section>
 
-                {/* TAB 2: TIMELINE & CALENDAR */}
-                {activeTab === 'timeline' && (
-                  <div className="timeline-calendar-layout">
-                    {/* CALENDAR SECTION */}
-                    <div className="calendar-section">
-                      <div className="calendar-header">
-                        <button onClick={prevMonth} className="btn btn-secondary" style={{ padding: '2px 6px' }}>
-                          <ChevronLeftIcon size={12} />
-                        </button>
-                        <span>{monthName} {calendarYear}</span>
-                        <button onClick={nextMonth} className="btn btn-secondary" style={{ padding: '2px 6px' }}>
-                          <ChevronRightIcon size={12} />
-                        </button>
-                      </div>
-                      <div className="calendar-grid">
-                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                          <div key={d} className="calendar-day-header">{d}</div>
-                        ))}
-                        {calendarDays.map((day, idx) => {
-                          const isToday = new Date().toDateString() === new Date(day.year, day.month, day.dayNum).toDateString();
-                          const eventsOnThisDay = project.timeline?.filter(e => e.date === day.dateString) || [];
-                          
-                          return (
-                            <div 
-                              key={idx} 
-                              className={`calendar-day-cell ${day.isCurrentMonth ? '' : 'other-month'} ${isToday ? 'today' : ''}`}
-                            >
-                              <span className="day-number">{day.dayNum}</span>
-                              <div className="day-events">
-                                {eventsOnThisDay.map(ev => (
-                                  <div 
-                                    key={ev.id} 
-                                    className={`day-event-badge ${ev.completed ? 'completed' : ''}`}
-                                    title={ev.title}
-                                  >
-                                    {ev.title}
-                                  </div>
-                                ))}
-                              </div>
+              {/* INTERACTIVE WORKSPACE TABS */}
+              <section className={`tools-pane ${mobileActiveView === 'tools' ? 'mobile-show' : 'mobile-hide'}`}>
+                <nav className="tabs-bar">
+                  <button
+                    onClick={() => setActiveTab('kanban')}
+                    className={`tab-btn ${activeTab === 'kanban' ? 'active' : ''}`}
+                  >
+                    <KanbanIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Kanban & Scribble
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('timeline')}
+                    className={`tab-btn ${activeTab === 'timeline' ? 'active' : ''}`}
+                  >
+                    <CalendarIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Timeline & Calendar
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('checklist')}
+                    className={`tab-btn ${activeTab === 'checklist' ? 'active' : ''}`}
+                  >
+                    <CheckSquareIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Checklist Tab
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('xp')}
+                    className={`tab-btn ${activeTab === 'xp' ? 'active' : ''}`}
+                  >
+                    <CodeIcon size={12} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> XP Code Optimizer
+                  </button>
+                </nav>
+
+                <div className="tab-content">
+
+                  {/* TAB 1: KANBAN & SCRIBBLE PAD (ALIGNED SIDE-BY-SIDE) */}
+                  {activeTab === 'kanban' && (
+                    <div className="kanban-scribble-layout">
+                      {/* KANBAN SECTION */}
+                      <div className="kanban-section">
+                        <div className="kanban-board">
+
+                          {/* column: TODO */}
+                          <div className="kanban-column">
+                            <div className="column-header">
+                              <span>To Do</span>
+                              <span className="column-count">
+                                {project.kanban?.filter(c => c.status === 'todo').length || 0}
+                              </span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* TIMELINE SETTER */}
-                    <div className="timeline-section">
-                      <div className="pane-header" style={{ border: '1px solid var(--border-color)', borderBottom: 'none' }}>
-                        <span>Virtual Timeline Setters</span>
-                        <button onClick={() => setIsAddEventOpen(true)} className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: '10px' }}>
-                          <PlusIcon size={10} /> Add Milestone
-                        </button>
-                      </div>
-                      <div className="milestones-list">
-                        {project.timeline && project.timeline.length > 0 ? (
-                          project.timeline.map(ev => (
-                            <div key={ev.id} className="milestone-item">
-                              <div className="milestone-header">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={ev.completed}
-                                    onChange={() => handleToggleEventCompletion(ev.id)}
-                                    className="checklist-checkbox"
-                                  />
-                                  <span className="milestone-title" style={{ textDecoration: ev.completed ? 'line-through' : 'none', color: ev.completed ? 'var(--text-muted)' : 'inherit' }}>
-                                    {ev.title}
-                                  </span>
+                            <div className="cards-container">
+                              {project.kanban?.filter(c => c.status === 'todo').map(card => (
+                                <div key={card.id} className="kanban-card">
+                                  <div className="card-title">{card.title}</div>
+                                  {card.description && <div className="card-desc">{card.description}</div>}
+                                  <div className="card-footer">
+                                    <span className={`card-priority ${card.priority}`}>{card.priority}</span>
+                                    <div className="card-actions">
+                                      <button
+                                        onClick={() => handleMoveKanbanCard(card.id, 'in_progress')}
+                                        className="card-action-btn"
+                                        title="Move to In Progress"
+                                      >
+                                        <ChevronRightIcon size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteKanbanCard(card.id)}
+                                        className="card-action-btn"
+                                        title="Delete Card"
+                                      >
+                                        <TrashIcon size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                                <span className="milestone-date">{ev.date}</span>
-                              </div>
-                              <div className="milestone-footer">
-                                <span className="project-item-meth" style={{ fontSize: '8px' }}>
-                                  {ev.type || 'Scrum'}
-                                </span>
-                                <button 
-                                  onClick={() => handleDeleteTimelineEvent(ev.id)} 
-                                  className="card-action-btn"
-                                  style={{ padding: '0 4px' }}
-                                >
-                                  <TrashIcon size={12} />
-                                </button>
-                              </div>
+                              ))}
+                              <button
+                                onClick={() => { setCardTargetCol('todo'); setIsAddCardOpen(true); }}
+                                className="btn btn-secondary"
+                                style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
+                              >
+                                <PlusIcon size={12} /> Add Card
+                              </button>
                             </div>
-                          ))
-                        ) : (
-                          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-                            No milestones listed. Use the advisor to generate a schedule or click Add Milestone above.
                           </div>
-                        )}
+
+                          {/* column: IN PROGRESS */}
+                          <div className="kanban-column">
+                            <div className="column-header">
+                              <span>In Progress</span>
+                              <span className="column-count">
+                                {project.kanban?.filter(c => c.status === 'in_progress').length || 0}
+                              </span>
+                            </div>
+                            <div className="cards-container">
+                              {project.kanban?.filter(c => c.status === 'in_progress').map(card => (
+                                <div key={card.id} className="kanban-card">
+                                  <div className="card-title">{card.title}</div>
+                                  {card.description && <div className="card-desc">{card.description}</div>}
+                                  <div className="card-footer">
+                                    <span className={`card-priority ${card.priority}`}>{card.priority}</span>
+                                    <div className="card-actions">
+                                      <button
+                                        onClick={() => handleMoveKanbanCard(card.id, 'todo')}
+                                        className="card-action-btn"
+                                        title="Move to To Do"
+                                      >
+                                        <ChevronLeftIcon size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleMoveKanbanCard(card.id, 'done')}
+                                        className="card-action-btn"
+                                        title="Move to Done"
+                                      >
+                                        <ChevronRightIcon size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteKanbanCard(card.id)}
+                                        className="card-action-btn"
+                                        title="Delete Card"
+                                      >
+                                        <TrashIcon size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              <button
+                                onClick={() => { setCardTargetCol('in_progress'); setIsAddCardOpen(true); }}
+                                className="btn btn-secondary"
+                                style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
+                              >
+                                <PlusIcon size={12} /> Add Card
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* column: DONE */}
+                          <div className="kanban-column">
+                            <div className="column-header">
+                              <span>Done</span>
+                              <span className="column-count">
+                                {project.kanban?.filter(c => c.status === 'done').length || 0}
+                              </span>
+                            </div>
+                            <div className="cards-container">
+                              {project.kanban?.filter(c => c.status === 'done').map(card => (
+                                <div key={card.id} className="kanban-card">
+                                  <div className="card-title" style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>
+                                    {card.title}
+                                  </div>
+                                  {card.description && <div className="card-desc" style={{ color: 'var(--text-muted)' }}>{card.description}</div>}
+                                  <div className="card-footer">
+                                    <span className={`card-priority ${card.priority}`} style={{ opacity: 0.5 }}>{card.priority}</span>
+                                    <div className="card-actions">
+                                      <button
+                                        onClick={() => handleMoveKanbanCard(card.id, 'in_progress')}
+                                        className="card-action-btn"
+                                        title="Move to In Progress"
+                                      >
+                                        <ChevronLeftIcon size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteKanbanCard(card.id)}
+                                        className="card-action-btn"
+                                        title="Delete Card"
+                                      >
+                                        <TrashIcon size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              <button
+                                onClick={() => { setCardTargetCol('done'); setIsAddCardOpen(true); }}
+                                className="btn btn-secondary"
+                                style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '4px' }}
+                              >
+                                <PlusIcon size={12} /> Add Card
+                              </button>
+                            </div>
+                          </div>
+
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* TAB 3: CHECKLIST */}
-                {activeTab === 'checklist' && (
-                  <div className="checklist-container">
-                    <div className="checklist-header">
-                      Project checklist & tasks
-                    </div>
-                    <div className="checklist-items">
-                      {project.checklist && project.checklist.map(item => (
-                        <div key={item.id} className="checklist-item">
-                          <div className="checklist-item-left">
-                            <input 
-                              type="checkbox" 
-                              checked={item.completed} 
-                              onChange={() => handleToggleChecklist(item.id)}
-                              className="checklist-checkbox"
-                            />
-                            <span className={`checklist-text ${item.completed ? 'completed' : ''}`}>
-                              {item.text}
-                            </span>
+                      {/* ALIGNED SCRIBBLE PAD */}
+                      <div className="scribble-section">
+                        <div className="scribble-header">
+                          <span>Scribble Pad</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {saveSuccess && <span style={{ fontSize: '9px', textTransform: 'lowercase', color: 'var(--text-muted)' }}>Saved!</span>}
+                            <button
+                              onClick={handleSaveScribble}
+                              disabled={isScribbleSaving}
+                              className="btn btn-secondary"
+                              style={{ padding: '2px 6px', fontSize: '9px' }}
+                            >
+                              <SaveIcon size={10} style={{ marginRight: '3px' }} /> {isScribbleSaving ? 'Saving' : 'Save'}
+                            </button>
                           </div>
-                          <button onClick={() => handleDeleteChecklistItem(item.id)} className="card-action-btn">
-                            <TrashIcon size={14} />
-                          </button>
-                        </div>
-                      ))}
-                      {(!project.checklist || project.checklist.length === 0) && (
-                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px', fontFamily: 'var(--font-mono)' }}>
-                          No checklist items. Create one below!
-                        </div>
-                      )}
-                    </div>
-                    <form onSubmit={handleAddChecklistItem} style={{ padding: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '8px' }}>
-                      <input 
-                        type="text" 
-                        placeholder="Add new task item..." 
-                        value={newChecklistItem}
-                        onChange={(e) => setNewChecklistItem(e.target.value)}
-                        className="input-field"
-                      />
-                      <button type="submit" className="btn">Add</button>
-                    </form>
-                  </div>
-                )}
-
-                {/* TAB 4: XP CODE OPTIMIZER */}
-                {activeTab === 'xp' && (
-                  <div className="xp-layout">
-                    <div className="xp-description">
-                      <strong>Extreme Programming (XP) Code Optimization Assistant:</strong> Refactor code according to XP principles. XP focuses on high code quality, test-driven development (TDD), and refactoring code smells early. Input your code snippet below to scan for design flaws and receive an optimized version.
-                    </div>
-                    <div className="xp-workspace">
-                      {/* Left Pane: Code Editor Input */}
-                      <div className="code-editor-panel">
-                        <div className="pane-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <span>XP Source Input</span>
-                          <button 
-                            onClick={handleRunXPOptimizer} 
-                            disabled={isXpLoading} 
-                            className="btn" 
-                            style={{ padding: '2px 8px', fontSize: '10px' }}
-                          >
-                            {isXpLoading ? 'Analyzing...' : 'Run XP Analysis'}
-                          </button>
                         </div>
                         <textarea
-                          value={xpCode}
-                          onChange={(e) => setXpCode(e.target.value)}
-                          className="code-textarea"
-                          style={{ minHeight: '200px' }}
+                          value={scribbleText}
+                          onChange={(e) => setScribbleText(e.target.value)}
+                          placeholder="# Scribble Board&#10;&#10;- Meeting at 10 AM&#10;- Discuss Kanban WIP limits&#10;- Refactor total price calculation"
+                          className="scribble-textarea"
                         />
-                        
-                        <div className="pane-header" style={{ borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
-                          <span>Optimization History</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: TIMELINE & CALENDAR */}
+                  {activeTab === 'timeline' && (
+                    <div className="timeline-calendar-layout">
+                      {/* CALENDAR SECTION */}
+                      <div className="calendar-section">
+                        <div className="calendar-header">
+                          <button onClick={prevMonth} className="btn btn-secondary" style={{ padding: '2px 6px' }}>
+                            <ChevronLeftIcon size={12} />
+                          </button>
+                          <span>{monthName} {calendarYear}</span>
+                          <button onClick={nextMonth} className="btn btn-secondary" style={{ padding: '2px 6px' }}>
+                            <ChevronRightIcon size={12} />
+                          </button>
                         </div>
-                        <div style={{ padding: '10px', overflowY: 'auto', flex: 1, maxHeight: '180px' }} className="opt-history-list">
-                          {project.xpOptimizations && project.xpOptimizations.length > 0 ? (
-                            project.xpOptimizations.map((opt, i) => (
-                              <div 
-                                key={opt.id} 
-                                onClick={() => setActiveXpOpt(opt)}
-                                className={`opt-history-item ${activeXpOpt?.id === opt.id ? 'active' : ''}`}
-                                style={{ borderLeft: activeXpOpt?.id === opt.id ? '3px solid var(--border-color)' : '1px solid var(--border-muted)' }}
+                        <div className="calendar-grid">
+                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                            <div key={d} className="calendar-day-header">{d}</div>
+                          ))}
+                          {calendarDays.map((day, idx) => {
+                            const isToday = new Date().toDateString() === new Date(day.year, day.month, day.dayNum).toDateString();
+                            const eventsOnThisDay = project.timeline?.filter(e => e.date === day.dateString) || [];
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`calendar-day-cell ${day.isCurrentMonth ? '' : 'other-month'} ${isToday ? 'today' : ''}`}
                               >
-                                <span>Snippet #{i + 1}</span>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{new Date(parseInt(opt.id.split('_').pop() || Date.now())).toLocaleTimeString()}</span>
+                                <span className="day-number">{day.dayNum}</span>
+                                <div className="day-events">
+                                  {eventsOnThisDay.map(ev => (
+                                    <div
+                                      key={ev.id}
+                                      className={`day-event-badge ${ev.completed ? 'completed' : ''}`}
+                                      title={ev.title}
+                                    >
+                                      {ev.title}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* TIMELINE SETTER */}
+                      <div className="timeline-section">
+                        <div className="pane-header" style={{ border: '1px solid var(--border-color)', borderBottom: 'none' }}>
+                          <span>Virtual Timeline Setters</span>
+                          <button onClick={() => setIsAddEventOpen(true)} className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: '10px' }}>
+                            <PlusIcon size={10} /> Add Milestone
+                          </button>
+                        </div>
+                        <div className="milestones-list">
+                          {project.timeline && project.timeline.length > 0 ? (
+                            project.timeline.map(ev => (
+                              <div key={ev.id} className="milestone-item">
+                                <div className="milestone-header">
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={ev.completed}
+                                      onChange={() => handleToggleEventCompletion(ev.id)}
+                                      className="checklist-checkbox"
+                                    />
+                                    <span className="milestone-title" style={{ textDecoration: ev.completed ? 'line-through' : 'none', color: ev.completed ? 'var(--text-muted)' : 'inherit' }}>
+                                      {ev.title}
+                                    </span>
+                                  </div>
+                                  <span className="milestone-date">{ev.date}</span>
+                                </div>
+                                <div className="milestone-footer">
+                                  <span className="project-item-meth" style={{ fontSize: '8px' }}>
+                                    {ev.type || 'Scrum'}
+                                  </span>
+                                  <button
+                                    onClick={() => handleDeleteTimelineEvent(ev.id)}
+                                    className="card-action-btn"
+                                    style={{ padding: '0 4px' }}
+                                  >
+                                    <TrashIcon size={12} />
+                                  </button>
+                                </div>
                               </div>
                             ))
                           ) : (
-                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>No scan runs yet.</div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right Pane: Analysis Suggestions & Refactored output */}
-                      <div className="optimization-panel">
-                        <div className="pane-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <span>XP Review Feedback & TDD Tests</span>
-                        </div>
-                        <div className="suggestion-content">
-                          {activeXpOpt ? (
-                            <div>
-                              <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                                {/* Basic Custom Markdown parser (simplified) */}
-                                {activeXpOpt.suggestions.split('\n').map((line, i) => {
-                                  if (line.startsWith('### ')) {
-                                    return <h3 key={i}>{line.replace('### ', '')}</h3>;
-                                  } else if (line.startsWith('- ')) {
-                                    return <li key={i} style={{ marginLeft: '12px', marginBottom: '6px' }}>{line.replace('- ', '')}</li>;
-                                  } else if (line.startsWith('```')) {
-                                    return null; // Skip raw triple backticks in view container
-                                  }
-                                  return <p key={i} style={{ marginBottom: '8px' }}>{line}</p>;
-                                })}
-                              </div>
-                              
-                              <h3 style={{ marginTop: '16px' }}>XP Optimized Code Output</h3>
-                              <div style={{ position: 'relative', marginTop: '8px' }}>
-                                <pre style={{ margin: 0, padding: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                                  <code>{activeXpOpt.optimizedCode}</code>
-                                </pre>
-                                <button 
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(activeXpOpt.optimizedCode);
-                                    alert("Copied code to clipboard!");
-                                  }}
-                                  className="btn btn-secondary"
-                                  style={{ position: 'absolute', top: '8px', right: '8px', padding: '2px 6px', fontSize: '9px' }}
-                                >
-                                  <CopyIcon size={10} style={{ marginRight: '2px' }} /> Copy
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                              Click "Run XP Analysis" to review code structure
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                              No milestones listed. Use the advisor to generate a schedule or click Add Milestone above.
                             </div>
                           )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
+                  {/* TAB 3: CHECKLIST */}
+                  {activeTab === 'checklist' && (
+                    <div className="checklist-container">
+                      <div className="checklist-header">
+                        Project checklist & tasks
+                      </div>
+                      <div className="checklist-items">
+                        {project.checklist && project.checklist.map(item => (
+                          <div key={item.id} className="checklist-item">
+                            <div className="checklist-item-left">
+                              <input
+                                type="checkbox"
+                                checked={item.completed}
+                                onChange={() => handleToggleChecklist(item.id)}
+                                className="checklist-checkbox"
+                              />
+                              <span className={`checklist-text ${item.completed ? 'completed' : ''}`}>
+                                {item.text}
+                              </span>
+                            </div>
+                            <button onClick={() => handleDeleteChecklistItem(item.id)} className="card-action-btn">
+                              <TrashIcon size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {(!project.checklist || project.checklist.length === 0) && (
+                          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px', fontFamily: 'var(--font-mono)' }}>
+                            No checklist items. Create one below!
+                          </div>
+                        )}
+                      </div>
+                      <form onSubmit={handleAddChecklistItem} style={{ padding: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '8px' }}>
+                        <input
+                          type="text"
+                          placeholder="Add new task item..."
+                          value={newChecklistItem}
+                          onChange={(e) => setNewChecklistItem(e.target.value)}
+                          className="input-field"
+                        />
+                        <button type="submit" className="btn">Add</button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* TAB 4: XP CODE OPTIMIZER */}
+                  {activeTab === 'xp' && (
+                    <div className="xp-layout">
+                      <div className="xp-description">
+                        <strong>Extreme Programming (XP) Code Optimization Assistant:</strong> Refactor code according to XP principles. XP focuses on high code quality, test-driven development (TDD), and refactoring code smells early. Input your code snippet below to scan for design flaws and receive an optimized version.
+                      </div>
+                      <div className="xp-workspace">
+                        {/* Left Pane: Code Editor Input */}
+                        <div className="code-editor-panel">
+                          <div className="pane-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <span>XP Source Input</span>
+                            <button
+                              onClick={handleRunXPOptimizer}
+                              disabled={isXpLoading}
+                              className="btn"
+                              style={{ padding: '2px 8px', fontSize: '10px' }}
+                            >
+                              {isXpLoading ? 'Analyzing...' : 'Run XP Analysis'}
+                            </button>
+                          </div>
+                          <textarea
+                            value={xpCode}
+                            onChange={(e) => setXpCode(e.target.value)}
+                            className="code-textarea"
+                            style={{ minHeight: '200px' }}
+                          />
+
+                          <div className="pane-header" style={{ borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+                            <span>Optimization History</span>
+                          </div>
+                          <div style={{ padding: '10px', overflowY: 'auto', flex: 1, maxHeight: '180px' }} className="opt-history-list">
+                            {project.xpOptimizations && project.xpOptimizations.length > 0 ? (
+                              project.xpOptimizations.map((opt, i) => (
+                                <div
+                                  key={opt.id}
+                                  onClick={() => setActiveXpOpt(opt)}
+                                  className={`opt-history-item ${activeXpOpt?.id === opt.id ? 'active' : ''}`}
+                                  style={{ borderLeft: activeXpOpt?.id === opt.id ? '3px solid var(--border-color)' : '1px solid var(--border-muted)' }}
+                                >
+                                  <span>Snippet #{i + 1}</span>
+                                  <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{new Date(parseInt(opt.id.split('_').pop() || Date.now())).toLocaleTimeString()}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>No scan runs yet.</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right Pane: Analysis Suggestions & Refactored output */}
+                        <div className="optimization-panel">
+                          <div className="pane-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <span>XP Review Feedback & TDD Tests</span>
+                          </div>
+                          <div className="suggestion-content">
+                            {activeXpOpt ? (
+                              <div>
+                                <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                  {/* Basic Custom Markdown parser (simplified) */}
+                                  {activeXpOpt.suggestions.split('\n').map((line, i) => {
+                                    if (line.startsWith('### ')) {
+                                      return <h3 key={i}>{line.replace('### ', '')}</h3>;
+                                    } else if (line.startsWith('- ')) {
+                                      return <li key={i} style={{ marginLeft: '12px', marginBottom: '6px' }}>{line.replace('- ', '')}</li>;
+                                    } else if (line.startsWith('```')) {
+                                      return null; // Skip raw triple backticks in view container
+                                    }
+                                    return <p key={i} style={{ marginBottom: '8px' }}>{line}</p>;
+                                  })}
+                                </div>
+
+                                <h3 style={{ marginTop: '16px' }}>XP Optimized Code Output</h3>
+                                <div style={{ position: 'relative', marginTop: '8px' }}>
+                                  <pre style={{ margin: 0, padding: '12px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                                    <code>{activeXpOpt.optimizedCode}</code>
+                                  </pre>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(activeXpOpt.optimizedCode);
+                                      alert("Copied code to clipboard!");
+                                    }}
+                                    className="btn btn-secondary"
+                                    style={{ position: 'absolute', top: '8px', right: '8px', padding: '2px 6px', fontSize: '9px' }}
+                                  >
+                                    <CopyIcon size={10} style={{ marginRight: '2px' }} /> Copy
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                                Click "Run XP Analysis" to review code structure
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </section>
+            </div>
+          </main>
+        ) : (
+          <div className={`no-project-selected ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
+            <FileTextIcon size={48} />
+            <div>Select or create a workspace to begin methodology problem-solving.</div>
+            <button onClick={() => setIsNewProjectModalOpen(true)} className="btn">
+              Create Project
+            </button>
+          </div>
+        )}
+
+        {/* MODAL: Create New Project */}
+        {isNewProjectModalOpen && (
+          <div className="modal-overlay">
+            <form onSubmit={handleCreateProject} className="modal-content">
+              <div className="modal-header">Create Project Workspace</div>
+
+              <div className="form-group">
+                <label htmlFor="proj-name">Project Name</label>
+                <input
+                  id="proj-name"
+                  type="text"
+                  required
+                  placeholder="e.g. Migration to Cloud Infrastructure"
+                  value={newProjName}
+                  onChange={(e) => setNewProjName(e.target.value)}
+                  className="input-field"
+                />
               </div>
-            </section>
+
+              <div className="form-group">
+                <label htmlFor="proj-desc">Brief Problem/Description</label>
+                <textarea
+                  id="proj-desc"
+                  placeholder="e.g. Legacy architecture with high scalability issue but rigid safety requirements..."
+                  value={newProjDesc}
+                  onChange={(e) => setNewProjDesc(e.target.value)}
+                  className="input-field"
+                  style={{ height: '80px', resize: 'none' }}
+                />
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={() => setIsNewProjectModalOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn">
+                  Create
+                </button>
+              </div>
+            </form>
           </div>
-        </main>
-      ) : (
-        <div className={`no-project-selected ${mobileActiveView !== 'sidebar' ? 'mobile-show' : 'mobile-hide'}`}>
-          <FileTextIcon size={48} />
-          <div>Select or create a workspace to begin methodology problem-solving.</div>
-          <button onClick={() => setIsNewProjectModalOpen(true)} className="btn">
-            Create Project
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* MODAL: Create New Project */}
-      {isNewProjectModalOpen && (
-        <div className="modal-overlay">
-          <form onSubmit={handleCreateProject} className="modal-content">
-            <div className="modal-header">Create Project Workspace</div>
-            
-            <div className="form-group">
-              <label htmlFor="proj-name">Project Name</label>
-              <input
-                id="proj-name"
-                type="text"
-                required
-                placeholder="e.g. Migration to Cloud Infrastructure"
-                value={newProjName}
-                onChange={(e) => setNewProjName(e.target.value)}
-                className="input-field"
-              />
-            </div>
+        {/* MODAL: Add Kanban Card */}
+        {isAddCardOpen && (
+          <div className="modal-overlay">
+            <form onSubmit={handleAddKanbanCard} className="modal-content">
+              <div className="modal-header">Add Task Card to {cardTargetCol.toUpperCase()}</div>
 
-            <div className="form-group">
-              <label htmlFor="proj-desc">Brief Problem/Description</label>
-              <textarea
-                id="proj-desc"
-                placeholder="e.g. Legacy architecture with high scalability issue but rigid safety requirements..."
-                value={newProjDesc}
-                onChange={(e) => setNewProjDesc(e.target.value)}
-                className="input-field"
-                style={{ height: '80px', resize: 'none' }}
-              />
-            </div>
+              <div className="form-group">
+                <label htmlFor="card-title">Task Title</label>
+                <input
+                  id="card-title"
+                  type="text"
+                  required
+                  placeholder="Describe the task..."
+                  value={newCardTitle}
+                  onChange={(e) => setNewCardTitle(e.target.value)}
+                  className="input-field"
+                />
+              </div>
 
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                onClick={() => setIsNewProjectModalOpen(false)} 
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn">
-                Create
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+              <div className="form-group">
+                <label htmlFor="card-desc">Description</label>
+                <textarea
+                  id="card-desc"
+                  placeholder="Add detail specs (optional)..."
+                  value={newCardDesc}
+                  onChange={(e) => setNewCardDesc(e.target.value)}
+                  className="input-field"
+                  style={{ height: '60px', resize: 'none' }}
+                />
+              </div>
 
-      {/* MODAL: Add Kanban Card */}
-      {isAddCardOpen && (
-        <div className="modal-overlay">
-          <form onSubmit={handleAddKanbanCard} className="modal-content">
-            <div className="modal-header">Add Task Card to {cardTargetCol.toUpperCase()}</div>
-            
-            <div className="form-group">
-              <label htmlFor="card-title">Task Title</label>
-              <input
-                id="card-title"
-                type="text"
-                required
-                placeholder="Describe the task..."
-                value={newCardTitle}
-                onChange={(e) => setNewCardTitle(e.target.value)}
-                className="input-field"
-              />
-            </div>
+              <div className="form-group">
+                <label htmlFor="card-priority">Priority</label>
+                <select
+                  id="card-priority"
+                  value={newCardPriority}
+                  onChange={(e) => setNewCardPriority(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
 
-            <div className="form-group">
-              <label htmlFor="card-desc">Description</label>
-              <textarea
-                id="card-desc"
-                placeholder="Add detail specs (optional)..."
-                value={newCardDesc}
-                onChange={(e) => setNewCardDesc(e.target.value)}
-                className="input-field"
-                style={{ height: '60px', resize: 'none' }}
-              />
-            </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCardOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn">
+                  Add Card
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
-            <div className="form-group">
-              <label htmlFor="card-priority">Priority</label>
-              <select
-                id="card-priority"
-                value={newCardPriority}
-                onChange={(e) => setNewCardPriority(e.target.value)}
-                className="input-field"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
+        {/* MODAL: Add Timeline Milestone */}
+        {isAddEventOpen && (
+          <div className="modal-overlay">
+            <form onSubmit={handleAddTimelineEvent} className="modal-content">
+              <div className="modal-header">Schedule Milestone</div>
 
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                onClick={() => setIsAddCardOpen(false)} 
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn">
-                Add Card
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+              <div className="form-group">
+                <label htmlFor="event-title">Milestone Title</label>
+                <input
+                  id="event-title"
+                  type="text"
+                  required
+                  placeholder="e.g. Design review gate"
+                  value={newEventTitle}
+                  onChange={(e) => setNewEventTitle(e.target.value)}
+                  className="input-field"
+                />
+              </div>
 
-      {/* MODAL: Add Timeline Milestone */}
-      {isAddEventOpen && (
-        <div className="modal-overlay">
-          <form onSubmit={handleAddTimelineEvent} className="modal-content">
-            <div className="modal-header">Schedule Milestone</div>
-            
-            <div className="form-group">
-              <label htmlFor="event-title">Milestone Title</label>
-              <input
-                id="event-title"
-                type="text"
-                required
-                placeholder="e.g. Design review gate"
-                value={newEventTitle}
-                onChange={(e) => setNewEventTitle(e.target.value)}
-                className="input-field"
-              />
-            </div>
+              <div className="form-group">
+                <label htmlFor="event-date">Target Date</label>
+                <input
+                  id="event-date"
+                  type="date"
+                  required
+                  value={newEventDate}
+                  onChange={(e) => setNewEventDate(e.target.value)}
+                  className="input-field"
+                />
+              </div>
 
-            <div className="form-group">
-              <label htmlFor="event-date">Target Date</label>
-              <input
-                id="event-date"
-                type="date"
-                required
-                value={newEventDate}
-                onChange={(e) => setNewEventDate(e.target.value)}
-                className="input-field"
-              />
-            </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={() => setIsAddEventOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn">
+                  Add Event
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                onClick={() => setIsAddEventOpen(false)} 
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn">
-                Add Event
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* AI Settings Modal */}
-      {isSettingsOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">AI Settings Configuration</div>
-            <div className="form-group">
-              <label htmlFor="api-key-input">Gemini API Key</label>
-              <input
-                id="api-key-input"
-                type="password"
-                placeholder="AIzaSy..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                className="input-field"
-              />
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Enter your Google Gemini API Key to enable the real-time AI Agent. The key is stored safely in your local browser storage.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button 
-                onClick={() => setIsSettingsOpen(false)} 
-                className="btn btn-secondary"
-              >
-                Close
-              </button>
-              <button 
-                onClick={() => {
-                  localStorage.setItem('gemini_api_key', apiKeyInput);
-                  setIsSettingsOpen(false);
-                  alert("Settings saved successfully!");
-                }} 
-                className="btn"
-              >
-                Save Key
-              </button>
+        {/* AI Settings Modal */}
+        {isSettingsOpen && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">AI Settings Configuration</div>
+              <div className="form-group">
+                <label htmlFor="api-key-input">Gemini API Key</label>
+                <input
+                  id="api-key-input"
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="input-field"
+                />
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Enter your Google Gemini API Key to enable the real-time AI Agent. The key is stored safely in your local browser storage.
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.setItem('gemini_api_key', apiKeyInput);
+                    setIsSettingsOpen(false);
+                    alert("Settings saved successfully!");
+                  }}
+                  className="btn"
+                >
+                  Save Key
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* MODAL: Team Collaboration Settings */}
+        {isTeamModalOpen && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">Team Collaboration</div>
+              
+              <div className="modal-tab-headers" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '16px', paddingBottom: '8px' }}>
+                <button
+                  type="button"
+                  className={`tab-btn ${teamModalTab === 'join' ? 'active' : ''}`}
+                  onClick={() => {
+                    setTeamModalTab('join');
+                    setNewlyCreatedTeam(null);
+                  }}
+                  style={{ flex: 1, padding: '8px', borderRadius: '4px' }}
+                >
+                  Join Team
+                </button>
+                <button
+                  type="button"
+                  className={`tab-btn ${teamModalTab === 'create' ? 'active' : ''}`}
+                  onClick={() => {
+                    setTeamModalTab('create');
+                    setNewlyCreatedTeam(null);
+                  }}
+                  style={{ flex: 1, padding: '8px', borderRadius: '4px' }}
+                >
+                  Create Team
+                </button>
+              </div>
+
+              {teamModalTab === 'join' ? (
+                <form onSubmit={handleJoinTeam} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="form-group">
+                    <label htmlFor="join-code">Enter Team Code</label>
+                    <input
+                      id="join-code"
+                      type="text"
+                      required
+                      placeholder="e.g. TEAM-AB12CD"
+                      value={joinTeamCodeInput}
+                      onChange={(e) => setJoinTeamCodeInput(e.target.value)}
+                      className="input-field"
+                      style={{ textTransform: 'uppercase' }}
+                    />
+                  </div>
+                  <button type="submit" className="btn w-full">
+                    Join Team Workspace
+                  </button>
+                </form>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {!newlyCreatedTeam ? (
+                    <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div className="form-group">
+                        <label htmlFor="create-team-name">Team Name</label>
+                        <input
+                          id="create-team-name"
+                          type="text"
+                          required
+                          placeholder="e.g. Alpha Development Team"
+                          value={createTeamNameInput}
+                          onChange={(e) => setCreateTeamNameInput(e.target.value)}
+                          className="input-field"
+                        />
+                      </div>
+                      <button type="submit" className="btn w-full">
+                        Create & Join Team
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="team-created-display" style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '16px', backgroundColor: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Team Created Successfully!</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>Share this code with your team members to join:</div>
+                      <div className="team-created-code-container" style={{ display: 'flex', gap: '8px', alignItems: 'center', margin: '8px 0' }}>
+                        <span className="team-created-code" style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px', color: 'var(--accent-color)' }}>{newlyCreatedTeam.code}</span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            navigator.clipboard.writeText(newlyCreatedTeam.code);
+                            alert("Team code copied to clipboard!");
+                          }}
+                          style={{ padding: '4px 8px', fontSize: '10px' }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="modal-footer" style={{ marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsTeamModalOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }

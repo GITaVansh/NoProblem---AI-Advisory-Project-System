@@ -1256,3 +1256,122 @@ body {
     padding: 16px !important;
   }
 }
+
+/* Collaborative & Team Mode Styles */
+.team-indicator-bar {
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.03) 10px,
+    rgba(0, 0, 0, 0.03) 10px,
+    rgba(0, 0, 0, 0.03) 20px
+  );
+}
+
+[data-theme='dark'] .team-indicator-bar {
+  background-color: var(--bg-tertiary);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.25),
+    rgba(0, 0, 0, 0.25) 10px,
+    rgba(255, 255, 255, 0.02) 10px,
+    rgba(255, 255, 255, 0.02) 20px
+  );
+}
+
+.team-info-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.team-badge-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  font-weight: bold;
+}
+
+.team-badge-value {
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-code-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background-color: var(--border-color);
+  color: var(--bg-primary);
+  padding: 2px 6px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+}
+
+.modal-tab-headers {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 14px;
+}
+
+.modal-tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.modal-tab-btn.active {
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.team-join-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.team-created-display {
+  border: 1px dashed var(--border-color);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-created-code-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-created-code {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: 4px 12px;
+}
